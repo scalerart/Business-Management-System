@@ -31,13 +31,6 @@ const schema = z.object({
   DEV_EMAIL_VERIFICATION_LINKS: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
   ALLOW_REMOTE_DEVELOPMENT_DATABASE: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
 }).superRefine((values, context) => {
-  if (values.DEV_EMAIL_VERIFICATION_LINKS && values.NODE_ENV !== 'development') {
-    context.addIssue({
-      code: 'custom',
-      path: ['DEV_EMAIL_VERIFICATION_LINKS'],
-      message: 'Development verification links can only be enabled when NODE_ENV=development.',
-    })
-  }
   if (values.ALLOW_REMOTE_DEVELOPMENT_DATABASE && values.NODE_ENV !== 'development') {
     context.addIssue({
       code: 'custom',
@@ -45,6 +38,12 @@ const schema = z.object({
       message: 'Remote development databases can only be enabled when NODE_ENV=development.',
     })
   }
+}).transform((values) => {
+  if (values.DEV_EMAIL_VERIFICATION_LINKS && values.NODE_ENV !== 'development') {
+    console.warn('DEV_EMAIL_VERIFICATION_LINKS=true is ignored because NODE_ENV is not development; set it to false in production.')
+    return { ...values, DEV_EMAIL_VERIFICATION_LINKS: false }
+  }
+  return values
 })
 
 export const config = schema.parse(process.env)

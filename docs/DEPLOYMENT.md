@@ -49,6 +49,8 @@ The Blueprint includes the required keys. Check them in Render under **Environme
 
 Use the Render dashboard's secret fields for credentials. Do not put database, JWT, SMTP, or Cloudinary secrets in `VITE_*` variables. If a custom domain is added, set `CLIENT_ORIGIN` to that exact origin; otherwise verification emails keep pointing at the Render hostname.
 
+If startup logs report that `DEV_EMAIL_VERIFICATION_LINKS=true` is ignored, set the variable to `false` (or remove it) in the hosting provider and redeploy. The API now disables this development-only option outside development and continues starting; production verification still requires working SMTP settings.
+
 ## 4. Database initialization and existing installations
 
 - For a brand-new empty Atlas database, the first API startup checks for unmigrated tenant records and creates the required indexes. `/api/health` becomes healthy only after the database is connected and startup initialization succeeds.
