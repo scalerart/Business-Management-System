@@ -14,7 +14,7 @@ import { recordAudit, withTransaction } from './domain/workflows.js'
 import { requireAuth } from './middleware.js'
 import { Business, BusinessDocument, Counter, Customer, Expense, Income, Invoice, LedgerEntry, Order, Payment, Product, Purchase, StockMovement, Supplier, SupplierPayment } from './models.js'
 import { BusinessError } from './business.js'
-import { emailDeliveryConfigured, mailDeliveryError, sendEmailMessage } from './mail.js'
+import { emailDeliveryConfigured, emailFromAddress, mailDeliveryError, sendEmailMessage } from './mail.js'
 
 export const integrationsRouter = Router()
 integrationsRouter.use(requireAuth)
@@ -34,7 +34,7 @@ integrationsRouter.post('/integrations/email-test', async (req, res, next) => {
     }
     try {
       await sendEmailMessage({
-        from: config.SMTP_FROM,
+        from: emailFromAddress(),
         to: req.authUser.email,
         subject: 'MAA business email delivery test',
         text: 'This test confirms that the configured SMTP service can deliver email for your business workspace.',
@@ -381,7 +381,7 @@ integrationsRouter.post('/invoices/:id/email', async (req, res, next) => {
         due: currency(Math.max(0, invoice.totalMinor - invoice.paidMinor), business.currency ?? config.CURRENCY),
       }
       await sendEmailMessage({
-        from: config.SMTP_FROM,
+        from: emailFromAddress(),
         to: recipient,
         subject: renderInvoiceEmailTemplate(business.invoiceEmailSubject ?? 'Invoice {{invoiceNumber}} — {{businessName}}', placeholders),
         text: input.message || renderInvoiceEmailTemplate(

@@ -130,8 +130,8 @@ export default function SettingsPage({ isOwner, businessId }: { isOwner: boolean
         <span>Sent to the workspace owner address</span>
       </div>}
       {isOwner && status.data && !status.data.emailConfigured && <div className="settings-email-setup" role="status">
-        <strong>Email delivery needs SMTP configuration.</strong>
-        <span>In your hosting provider’s environment settings, add SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD and SMTP_FROM, then redeploy. Keep credentials out of this page and source control.</span>
+        <strong>Email delivery needs configuration.</strong>
+        <span>In your hosting provider’s environment settings, configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD and SMTP_FROM, or set RESEND_API_KEY and a verified RESEND_FROM sender. Keep credentials out of this page and source control.</span>
       </div>}
       {emailTestMessage && <p className="settings-success" role="status">{emailTestMessage}</p>}
       {emailTestError && <p className="settings-error" role="alert"><CircleAlert size={14} />{emailTestError}</p>}

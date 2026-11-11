@@ -30,8 +30,32 @@ export function mailDeliveryError(error: unknown) {
     )
   }
   if (code === 'ERESEND') {
+    if (responseCode === '401') {
+      return new MailDeliveryError(
+        'Resend rejected the API key (401). Revoke the exposed key, create a new Resend API key, update RESEND_API_KEY in the host environment, and redeploy.',
+        code,
+        Number(responseCode),
+      )
+    }
+    if (responseCode === '403') {
+      return new MailDeliveryError(
+        'Resend denied this request (403). Check the API key permissions and verify your sending domain in Resend.',
+        code,
+        Number(responseCode),
+      )
+    }
+    if (responseCode === '422') {
+      return new MailDeliveryError(
+        'Resend rejected the sender or email fields (422). Set RESEND_FROM to an address on a domain verified in Resend.',
+        code,
+        Number(responseCode),
+      )
+    }
+    if (responseCode === '429') {
+      return new MailDeliveryError('Resend rate limit reached (429). Wait briefly, then retry sending the verification email.', code, Number(responseCode))
+    }
     return new MailDeliveryError(
-      'Resend rejected the email. Check RESEND_API_KEY and confirm SMTP_FROM is a verified sender in your Resend account.',
+      `Resend rejected the email request (HTTP ${responseCode ?? 'unknown'}). Check the Resend API key and verified sender.`,
       code,
       responseCode ? Number(responseCode) : undefined,
     )
@@ -80,7 +104,13 @@ export function developmentVerificationLinksEnabled() {
 }
 
 export function emailDeliveryConfigured() {
-  return Boolean(config.SMTP_FROM && (config.RESEND_API_KEY || config.SMTP_HOST && config.SMTP_USER && config.SMTP_PASSWORD))
+  return config.RESEND_API_KEY
+    ? Boolean(config.RESEND_FROM)
+    : Boolean(config.SMTP_HOST && config.SMTP_USER && config.SMTP_PASSWORD && config.SMTP_FROM)
+}
+
+export function emailFromAddress() {
+  return config.RESEND_API_KEY ? config.RESEND_FROM : config.SMTP_FROM
 }
 
 export function assertVerificationDeliveryConfigured() {
@@ -99,7 +129,7 @@ export type EmailMessage = {
 
 export async function sendEmailMessage(message: EmailMessage) {
   if (config.RESEND_API_KEY) {
-    await sendResendMessage(message)
+    await sendResendMessage({ ...message, from: config.RESEND_FROM })
     return
   }
   await mailTransport().sendMail(message)
@@ -111,7 +141,7 @@ export async function sendVerificationMessage(input: { email: string; name: stri
     return
   }
   await sendEmailMessage({
-    from: config.SMTP_FROM,
+    from: emailFromAddress(),
     to: input.email,
     subject: 'Verify your MAA business account',
     text: `Hello ${input.name}, verify your account within one hour: ${input.url}`,

@@ -75,8 +75,8 @@ test('Resend rejection gives a safe actionable error without exposing provider r
       sendResendMessage({ from: 'verify@example.com', to: 'owner@example.com', subject: 'Verify', text: 'Link' }, 'bad-key'),
       (error: unknown) => {
         const mapped = mailDeliveryError(error)
-        assert.match(mapped.message, /RESEND_API_KEY/)
-        assert.match(mapped.message, /verified sender/)
+        assert.match(mapped.message, /API key/)
+        assert.match(mapped.message, /revoke the exposed key/i)
         assert.doesNotMatch(mapped.message, /private provider response/)
         return true
       },
@@ -84,4 +84,9 @@ test('Resend rejection gives a safe actionable error without exposing provider r
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('Resend permission and sender errors point to their specific configuration', () => {
+  assert.match(mailDeliveryError({ code: 'ERESEND', responseCode: 403 }).message, /permissions and verify your sending domain/)
+  assert.match(mailDeliveryError({ code: 'ERESEND', responseCode: 422 }).message, /RESEND_FROM/)
 })
