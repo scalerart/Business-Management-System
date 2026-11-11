@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mailDeliveryError, normalizeSmtpPassword } from './mail.js'
+import { mailDeliveryError, normalizeSmtpPassword, sendResendMessage } from './mail.js'
 
 test('Gmail app passwords discard copy-formatting spaces without changing other SMTP passwords', () => {
   assert.equal(normalizeSmtpPassword(' SMTP.GMAIL.COM ', 'abcd efgh ijkl mnop'), 'abcdefghijklmnop')
@@ -32,4 +32,56 @@ test('SMTP provider rejection exposes only its response code, not server details
   })
   assert.match(error.message, /response 550/)
   assert.doesNotMatch(error.message, /private server response text/)
+})
+
+test('Resend sends a verification email through its HTTPS API', async () => {
+  const originalFetch = globalThis.fetch
+  let requestUrl = ''
+  let requestInit: RequestInit | undefined
+  globalThis.fetch = async (input, init) => {
+    requestUrl = String(input)
+    requestInit = init
+    return new Response(null, { status: 200 })
+  }
+  try {
+    await sendResendMessage({
+      from: 'MAA Press <verify@example.com>',
+      to: 'owner@example.com',
+      subject: 'Verify your account',
+      text: 'Open the verification link.',
+      attachments: [{ filename: 'invoice.pdf', content: Buffer.from('pdf'), contentType: 'application/pdf' }],
+    }, 'test-api-key')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+
+  assert.equal(requestUrl, 'https://api.resend.com/emails')
+  assert.ok(requestInit)
+  assert.equal((requestInit.headers as Record<string, string>).Authorization, 'Bearer test-api-key')
+  assert.deepEqual(JSON.parse(String(requestInit?.body)), {
+    from: 'MAA Press <verify@example.com>',
+    to: ['owner@example.com'],
+    subject: 'Verify your account',
+    text: 'Open the verification link.',
+    attachments: [{ filename: 'invoice.pdf', content: Buffer.from('pdf').toString('base64'), content_type: 'application/pdf' }],
+  })
+})
+
+test('Resend rejection gives a safe actionable error without exposing provider response details', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response('private provider response', { status: 401 })
+  try {
+    await assert.rejects(
+      sendResendMessage({ from: 'verify@example.com', to: 'owner@example.com', subject: 'Verify', text: 'Link' }, 'bad-key'),
+      (error: unknown) => {
+        const mapped = mailDeliveryError(error)
+        assert.match(mapped.message, /RESEND_API_KEY/)
+        assert.match(mapped.message, /verified sender/)
+        assert.doesNotMatch(mapped.message, /private provider response/)
+        return true
+      },
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })

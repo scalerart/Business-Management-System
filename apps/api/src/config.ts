@@ -25,6 +25,7 @@ const schema = z.object({
   SMTP_USER: z.string().trim().default(''),
   SMTP_PASSWORD: z.string().default('').transform((value) => value || process.env.SMTP_APP_PASSWORD || ''),
   SMTP_FROM: z.string().trim().default('').transform((value) => value || process.env.SMTP_USER?.trim() || ''),
+  RESEND_API_KEY: z.string().trim().default(''),
   PLATFORM_ADMIN_EMAILS: z.string().default('').transform((value) =>
     [...new Set(value.split(',').map((email) => email.trim().toLowerCase()).filter(Boolean))],
   ),

@@ -5,7 +5,7 @@ export class MailConfigurationError extends Error {
   readonly status = 503
 
   constructor() {
-    super('Email is not configured. Add SMTP host, user, and password to the API environment.')
+    super('Email is not configured. Add SMTP settings or a Resend API key and a verified sender to the API environment.')
     this.name = 'MailConfigurationError'
   }
 }
@@ -13,7 +13,7 @@ export class MailConfigurationError extends Error {
 export class MailDeliveryError extends Error {
   readonly status = 503
 
-  constructor(message: string) {
+  constructor(message: string, readonly code?: string, readonly responseCode?: number) {
     super(message)
     this.name = 'MailDeliveryError'
   }
@@ -29,6 +29,13 @@ export function mailDeliveryError(error: unknown) {
       'SMTP login was rejected. Check SMTP_USER and SMTP_PASSWORD in the API environment; Gmail requires an App Password, not your normal account password.',
     )
   }
+  if (code === 'ERESEND') {
+    return new MailDeliveryError(
+      'Resend rejected the email. Check RESEND_API_KEY and confirm SMTP_FROM is a verified sender in your Resend account.',
+      code,
+      responseCode ? Number(responseCode) : undefined,
+    )
+  }
   if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
     return new MailDeliveryError('The SMTP host could not be resolved. Check SMTP_HOST in the API environment.')
   }
@@ -42,6 +49,9 @@ export function mailDeliveryError(error: unknown) {
   }
   if (message.includes('certificate') || message.includes('tls') || message.includes('ssl')) {
     return new MailDeliveryError('The SMTP TLS connection failed. Use port 465 for implicit TLS or port 587 for STARTTLS, as required by your provider.')
+  }
+  if (message.includes('fetch failed')) {
+    return new MailDeliveryError('The API could not connect to the email provider over HTTPS. Check outbound network access and try again.')
   }
   if (responseCode && Number(responseCode) >= 500) {
     return new MailDeliveryError(
@@ -69,10 +79,30 @@ export function developmentVerificationLinksEnabled() {
   return config.NODE_ENV === 'development' && config.DEV_EMAIL_VERIFICATION_LINKS
 }
 
+export function emailDeliveryConfigured() {
+  return Boolean(config.SMTP_FROM && (config.RESEND_API_KEY || config.SMTP_HOST && config.SMTP_USER && config.SMTP_PASSWORD))
+}
+
 export function assertVerificationDeliveryConfigured() {
-  if (!developmentVerificationLinksEnabled() && !(config.SMTP_HOST && config.SMTP_USER && config.SMTP_PASSWORD && config.SMTP_FROM)) {
+  if (!developmentVerificationLinksEnabled() && !emailDeliveryConfigured()) {
     throw new MailConfigurationError()
   }
+}
+
+export type EmailMessage = {
+  from: string
+  to: string
+  subject: string
+  text: string
+  attachments?: Array<{ filename: string; content: Buffer; contentType: string }>
+}
+
+export async function sendEmailMessage(message: EmailMessage) {
+  if (config.RESEND_API_KEY) {
+    await sendResendMessage(message)
+    return
+  }
+  await mailTransport().sendMail(message)
 }
 
 export async function sendVerificationMessage(input: { email: string; name: string; url: string }) {
@@ -80,12 +110,41 @@ export async function sendVerificationMessage(input: { email: string; name: stri
     console.info(`[development-only email verification] ${input.email}: ${input.url}`)
     return
   }
-  await mailTransport().sendMail({
+  await sendEmailMessage({
     from: config.SMTP_FROM,
     to: input.email,
     subject: 'Verify your MAA business account',
     text: `Hello ${input.name}, verify your account within one hour: ${input.url}`,
   })
+}
+
+export async function sendResendMessage(message: EmailMessage, apiKey = config.RESEND_API_KEY) {
+  if (!apiKey) throw new MailConfigurationError()
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: message.from,
+      to: [message.to],
+      subject: message.subject,
+      text: message.text,
+      ...(message.attachments?.length
+        ? {
+            attachments: message.attachments.map(({ filename, content, contentType }) => ({
+              filename,
+              content: content.toString('base64'),
+              content_type: contentType,
+            })),
+          }
+        : {}),
+    }),
+  })
+  if (!response.ok) {
+    throw new MailDeliveryError('Resend rejected the email request.', 'ERESEND', response.status)
+  }
 }
 
 export function mailTransport() {

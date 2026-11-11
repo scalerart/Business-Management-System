@@ -39,8 +39,9 @@ The Blueprint includes the required keys. Check them in Render under **Environme
 | `CLIENT_ORIGIN` | Leave unset for the generated Render domain; the app derives it from Render's `RENDER_EXTERNAL_URL`. For a custom domain, set the exact `https://` origin and redeploy. |
 | `TRUST_PROXY_HOPS` | `1` |
 | `CURRENCY`, `VITE_CURRENCY` | Same three-letter currency, `BDT` by default |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Real SMTP provider settings; required for email verification and invoice email. Gmail uses `smtp.gmail.com:587` with a Google App Password and 2-Step Verification. Port 587 uses required STARTTLS. |
-| `SMTP_FROM` | Optional sender address; defaults to `SMTP_USER`. For Gmail, use the same authorized mailbox. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | SMTP provider settings for email verification and invoice email. Gmail uses `smtp.gmail.com:587` with a Google App Password and 2-Step Verification. Port 587 uses required STARTTLS. |
+| `SMTP_FROM` | Sender address; defaults to `SMTP_USER`. Must be authorized by your email provider. |
+| `RESEND_API_KEY` | Optional HTTPS email delivery alternative. When set, the API uses Resend instead of SMTP for verification, test, and invoice emails; verify the `SMTP_FROM` domain/address in Resend first. This avoids hosts that block outbound SMTP ports. |
 | `SMTP_APP_PASSWORD` | Optional fallback when `SMTP_PASSWORD` is empty. For Gmail, use a Google App Password as the SMTP password; do not use the normal account password. |
 | `PLATFORM_ADMIN_EMAILS` | Optional comma-separated allowlist of verified account email addresses allowed to administer users across all workspaces. Register and verify an account using one of these addresses; never put this value in a `VITE_*` setting. |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Optional; required for document storage and invoice logo uploads. |

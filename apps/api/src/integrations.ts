@@ -14,14 +14,14 @@ import { recordAudit, withTransaction } from './domain/workflows.js'
 import { requireAuth } from './middleware.js'
 import { Business, BusinessDocument, Counter, Customer, Expense, Income, Invoice, LedgerEntry, Order, Payment, Product, Purchase, StockMovement, Supplier, SupplierPayment } from './models.js'
 import { BusinessError } from './business.js'
-import { mailDeliveryError, mailTransport } from './mail.js'
+import { emailDeliveryConfigured, mailDeliveryError, sendEmailMessage } from './mail.js'
 
 export const integrationsRouter = Router()
 integrationsRouter.use(requireAuth)
 
 integrationsRouter.get('/integrations/status', (req, res) => {
   res.json({
-    emailConfigured: Boolean(config.SMTP_HOST && config.SMTP_USER && config.SMTP_PASSWORD && config.SMTP_FROM),
+    emailConfigured: emailDeliveryConfigured(),
     documentStorageConfigured: cloudinaryConfigured(),
     backupExportAvailable: req.authUser?.role === 'owner',
   })
@@ -33,7 +33,7 @@ integrationsRouter.post('/integrations/email-test', async (req, res, next) => {
       throw new BusinessError(403, 'Only the workspace owner can send a test email.')
     }
     try {
-      await mailTransport().sendMail({
+      await sendEmailMessage({
         from: config.SMTP_FROM,
         to: req.authUser.email,
         subject: 'MAA business email delivery test',
@@ -380,7 +380,7 @@ integrationsRouter.post('/invoices/:id/email', async (req, res, next) => {
         total: currency(invoice.totalMinor, business.currency ?? config.CURRENCY),
         due: currency(Math.max(0, invoice.totalMinor - invoice.paidMinor), business.currency ?? config.CURRENCY),
       }
-      await mailTransport().sendMail({
+      await sendEmailMessage({
         from: config.SMTP_FROM,
         to: recipient,
         subject: renderInvoiceEmailTemplate(business.invoiceEmailSubject ?? 'Invoice {{invoiceNumber}} — {{businessName}}', placeholders),

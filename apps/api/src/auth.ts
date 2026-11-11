@@ -12,6 +12,7 @@ import { requireAuth } from './middleware.js'
 import {
   assertVerificationDeliveryConfigured,
   developmentVerificationLinksEnabled,
+  mailDeliveryError,
   sendVerificationMessage,
 } from './mail.js'
 import { MongoRateLimitStore } from './rate-limit-store.js'
@@ -134,9 +135,9 @@ authRouter.post('/register', authAttemptLimiter, async (req, res, next) => {
     try {
       await sendVerificationEmail({ userId: String(userId), email: input.email, name: input.name })
     } catch (error) {
-      console.error('Business account created, but verification email delivery failed.', error)
+      console.error('Business account created, but verification email delivery failed.', mailErrorLogDetails(error))
       res.status(503).json({
-        message: 'Your account was created, but the verification email could not be delivered. Configure SMTP or retry sending the verification email.',
+        message: `Your account was created, but the verification email could not be delivered. ${mailDeliveryError(error).message}`,
       })
       return
     }
@@ -191,7 +192,14 @@ authRouter.post('/resend-verification', authAttemptLimiter, async (req, res, nex
     const { email } = resendSchema.parse(req.body)
     assertVerificationDeliveryConfigured()
     const user = await User.findOne({ email, emailVerified: false }).select('name email')
-    if (user) await sendVerificationEmail({ userId: String(user._id), email: user.email, name: user.name })
+    if (user) {
+      try {
+        await sendVerificationEmail({ userId: String(user._id), email: user.email, name: user.name })
+      } catch (error) {
+        console.error('Verification email resend failed.', mailErrorLogDetails(error))
+        throw mailDeliveryError(error)
+      }
+    }
     res.json({ message: 'If that account needs verification, a new link has been sent.' })
   } catch (error) {
     next(error)
@@ -216,7 +224,7 @@ authRouter.post('/setup', authAttemptLimiter, async (req, res, next) => {
     try {
       await sendVerificationEmail({ userId: String(userId), email: input.email, name: input.name })
     } catch (error) {
-      console.error('Initial business account created, but verification email delivery failed.', error)
+      console.error('Initial business account created, but verification email delivery failed.', mailErrorLogDetails(error))
       try {
         await SetupClaim.deleteOne({ _id: 'initial-owner' })
         claimed = false
@@ -224,7 +232,7 @@ authRouter.post('/setup', authAttemptLimiter, async (req, res, next) => {
         console.error('Unable to release the initial account setup claim.')
       }
       res.status(503).json({
-        message: 'Your account was created, but the verification email could not be delivered. Configure SMTP or retry sending the verification email.',
+        message: `Your account was created, but the verification email could not be delivered. ${mailDeliveryError(error).message}`,
       })
       return
     }
@@ -300,4 +308,14 @@ authRouter.post('/logout', (_req, res) => {
 
 function isDuplicateKeyError(error: unknown): error is { code: number } {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000
+}
+
+function mailErrorLogDetails(error: unknown) {
+  if (typeof error !== 'object' || error === null) return { errorType: typeof error }
+  const details: Record<string, string | number> = {}
+  for (const key of ['code', 'responseCode', 'command'] as const) {
+    const value = Reflect.get(error, key) as unknown
+    if (typeof value === 'string' || typeof value === 'number') details[key] = value
+  }
+  return details
 }
